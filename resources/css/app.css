@@ -1,3 +1,101 @@
+@import url('https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+    html {
+        -webkit-text-size-adjust: 100%;
+    }
+
+    body {
+        @apply bg-surface-muted font-sans text-body text-content antialiased;
+    }
+
+    h1,
+    h2,
+    h3,
+    h4 {
+        @apply font-display text-content;
+    }
+
+    :focus-visible {
+        @apply shadow-focus-ring outline-none;
+    }
+}
+
+@layer components {
+    .btn {
+        @apply inline-flex items-center justify-center gap-2 rounded-input px-4 py-2.5 text-body font-medium transition duration-200 ease-out;
+    }
+
+    .btn-primary {
+        @apply btn bg-primary text-white hover:-translate-y-px hover:bg-primary-hover hover:shadow-primary-glow;
+    }
+
+    .btn-secondary {
+        @apply btn border border-hairline bg-surface text-content hover:-translate-y-px hover:border-content-muted;
+    }
+
+    .btn-ghost {
+        @apply btn text-content-secondary hover:bg-surface hover:text-content;
+    }
+
+    .btn-danger {
+        @apply btn border border-danger bg-transparent text-danger hover:-translate-y-px hover:bg-danger/5;
+    }
+
+    .btn-sm {
+        @apply px-3 py-2 text-small;
+    }
+
+    .btn-lg {
+        @apply px-6 py-3 text-subhead;
+    }
+
+    .card {
+        @apply overflow-hidden rounded-card border border-hairline bg-surface;
+    }
+
+    .card-hover {
+        @apply transition duration-200 ease-out hover:-translate-y-0.5 hover:shadow-card-hover;
+    }
+
+    .input {
+        @apply w-full rounded-input border border-hairline bg-surface px-3.5 py-2.5 text-body text-content placeholder:text-content-muted focus:border-primary focus:shadow-focus-ring focus:outline-none;
+    }
+
+    .label {
+        @apply mb-1.5 block text-small font-medium text-content-secondary;
+    }
+
+    .chip {
+        @apply inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-caption text-gray-600;
+    }
+
+    .chip-primary {
+        @apply chip bg-primary text-white;
+    }
+
+    .chip-success {
+        @apply chip bg-emerald-50 text-emerald-700;
+    }
+
+    .chip-warning {
+        @apply chip bg-amber-50 text-amber-700;
+    }
+
+    .chip-danger {
+        @apply chip bg-red-50 text-red-700;
+    }
+
+    .table-row {
+        @apply border-t border-hairline transition hover:bg-surface-muted;
+    }
+
+    .overline {
+        @apply text-overline font-medium uppercase text-content-muted;
+    }
+}
