@@ -1,7 +1,5 @@
 <script setup>
 import DangerButton from '@/Components/DangerButton.vue';
-import InputError from '@/Components/InputError.vue';
-import InputLabel from '@/Components/InputLabel.vue';
 import Modal from '@/Components/Modal.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
@@ -15,17 +13,24 @@ const form = useForm({
     password: '',
 });
 
+/** TextInput membungkus <input> di dalam <div>; fokus harus ke elemen aslinya. */
+function focusPassword() {
+    const el = passwordInput.value?.$el ?? passwordInput.value;
+
+    (typeof el?.focus === 'function' ? el : el?.querySelector?.('input'))?.focus();
+}
+
 const confirmUserDeletion = () => {
     confirmingUserDeletion.value = true;
 
-    nextTick(() => passwordInput.value.focus());
+    nextTick(() => focusPassword());
 };
 
 const deleteUser = () => {
     form.delete(route('profile.destroy'), {
         preserveScroll: true,
         onSuccess: () => closeModal(),
-        onError: () => passwordInput.value.focus(),
+        onError: () => focusPassword(),
         onFinish: () => form.reset(),
     });
 };
@@ -39,67 +44,47 @@ const closeModal = () => {
 </script>
 
 <template>
-    <section class="space-y-6">
+    <section>
         <header>
-            <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
-                Delete Account
-            </h2>
-
-            <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                Once your account is deleted, all of its resources and data will
-                be permanently deleted. Before deleting your account, please
-                download any data or information that you wish to retain.
+            <h2 class="text-subhead">Hapus Akun</h2>
+            <p class="mt-1 text-small text-content-secondary">
+                Akun yang dihapus akan dihapus permanen beserta seluruh datanya. Unduh dulu
+                laporan yang masih Anda perlukan.
             </p>
         </header>
 
-        <DangerButton @click="confirmUserDeletion">Delete Account</DangerButton>
+        <div class="mt-5">
+            <DangerButton type="button" @click="confirmUserDeletion">Hapus Akun</DangerButton>
+        </div>
 
         <Modal :show="confirmingUserDeletion" @close="closeModal">
             <div class="p-6">
-                <h2
-                    class="text-lg font-medium text-gray-900 dark:text-gray-100"
-                >
-                    Are you sure you want to delete your account?
-                </h2>
+                <h2 class="text-subhead">Yakin ingin menghapus akun?</h2>
 
-                <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                    Once your account is deleted, all of its resources and data
-                    will be permanently deleted. Please enter your password to
-                    confirm you would like to permanently delete your account.
+                <p class="mt-1 text-small text-content-secondary">
+                    Tindakan ini tidak dapat dibatalkan. Masukkan password Anda untuk konfirmasi.
                 </p>
 
                 <div class="mt-6">
-                    <InputLabel
-                        for="password"
-                        value="Password"
-                        class="sr-only"
-                    />
+                    <label class="label" for="delete-password">Password</label>
 
                     <TextInput
-                        id="password"
+                        id="delete-password"
                         ref="passwordInput"
                         v-model="form.password"
                         type="password"
-                        class="mt-1 block w-3/4"
+                        :error="form.errors.password"
+                        autocomplete="current-password"
                         placeholder="Password"
                         @keyup.enter="deleteUser"
                     />
-
-                    <InputError :message="form.errors.password" class="mt-2" />
                 </div>
 
-                <div class="mt-6 flex justify-end">
-                    <SecondaryButton @click="closeModal">
-                        Cancel
-                    </SecondaryButton>
+                <div class="mt-6 flex justify-end gap-3">
+                    <SecondaryButton @click="closeModal">Batal</SecondaryButton>
 
-                    <DangerButton
-                        class="ms-3"
-                        :class="{ 'opacity-25': form.processing }"
-                        :disabled="form.processing"
-                        @click="deleteUser"
-                    >
-                        Delete Account
+                    <DangerButton :loading="form.processing" loading-text="Menghapus..." @click="deleteUser">
+                        Hapus Akun
                     </DangerButton>
                 </div>
             </div>
