@@ -19,6 +19,13 @@
     </source>
     <php>
         <env name="APP_ENV" value="testing"/>
+        <!--
+            WAJIB sama dengan APP_TIMEZONE di .env. Kalau test berjalan di UTC
+            sementara aplikasi berjalan di WIB, setiap assertion tentang
+            startOfDay()/endOfDay() menguji kalender yang salah, dan bug batas
+            hari ETL bisa lolos tanpa terdeteksi.
+        -->
+        <env name="APP_TIMEZONE" value="Asia/Jakarta"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="CACHE_STORE" value="array"/>
