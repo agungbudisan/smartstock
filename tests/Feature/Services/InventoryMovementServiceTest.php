@@ -57,13 +57,17 @@ class InventoryMovementServiceTest extends TestCase
         // 1. stok naik
         $this->assertSame(100, $product->fresh()->current_stock);
 
-        // 2. buku besar: delta positif, tipe inbound
-        $this->assertSame(MovementType::Inbound, $movement->movement_type);
+        // 2. buku besar: delta positif; jenis, pemasok, dan pencatat dibaca dari
+        // dokumen karena kolomnya dihapus dari baris detail di tahap 4.
+        $document = $movement->transaction;
+
+        $this->assertInstanceOf(MovementType::class, $document->movement_type);
+        $this->assertSame(MovementType::Inbound, $document->movement_type);
         $this->assertSame(80, $movement->quantity);
         $this->assertSame($product->id, $movement->product_id);
-        $this->assertSame($supplier->id, $movement->supplier_id);
-        $this->assertSame('INV-2026-001', $movement->reference_code);
-        $this->assertSame($admin->id, $movement->user_id);
+        $this->assertSame($supplier->id, $document->supplier_id);
+        $this->assertSame('INV-2026-001', $document->physical_reference);
+        $this->assertSame($admin->id, $document->user_id);
         $this->assertTrue($movement->product->is($product));
 
         // 3. jejak audit
@@ -101,14 +105,33 @@ class InventoryMovementServiceTest extends TestCase
         $this->assertSame(2000.00, (float) $product->suppliers()->first()->pivot->last_purchase_price);
     }
 
-    public function test_inbound_without_unit_price_does_not_create_a_pivot_row(): void
+    /**
+     * Perilaku INI BERUBAH dengan sengaja.
+     *
+     * Dulu test ini mengunci aturan "inbound tanpa harga tidak membuat baris
+     * pivot". Aturan itu justru sumber ketidakkonsistenan yang ditemukan user:
+     * barang masuk dari pemasok tertentu tercatat lengkap di audit, tapi
+     * pemasok itu tidak muncul di halaman "Pemasok & Harga Beli" selama admin
+     * tidak mengisinya manual. Untuk produk baru halaman itu tidak pernah diisi
+     * sama sekali, jadi pemetaan produk ke pemasok menyimpang dari kenyataan.
+     *
+     * Sekarang setiap inbound yang menyebut pemasok otomatis menautkannya.
+     * Harga dan lead time tetap dibiarkan kosong karena keduanya tidak bisa
+     * disimpulkan dari satu transaksi. Lihat `tests/Feature/SupplierAutoLinkTest.php`.
+     */
+    public function test_inbound_without_unit_price_still_links_the_supplier(): void
     {
         $product = Product::factory()->create();
         $supplier = Supplier::factory()->create();
 
         $this->service->recordInbound($product, 10, supplierId: $supplier->id);
 
-        $this->assertSame(0, $product->suppliers()->count());
+        $this->assertSame(1, $product->suppliers()->count());
+
+        $pivot = $product->suppliers()->first()->pivot;
+
+        $this->assertNull($pivot->last_purchase_price);
+        $this->assertNull($pivot->lead_time_days);
     }
 
     public function test_inbound_rejects_an_unknown_supplier(): void
@@ -143,9 +166,9 @@ class InventoryMovementServiceTest extends TestCase
         );
 
         $this->assertSame(70, $product->fresh()->current_stock);
-        $this->assertSame(MovementType::Outbound, $movement->movement_type);
+        $this->assertSame(MovementType::Outbound, $movement->transaction->movement_type);
         $this->assertSame(-30, $movement->quantity);
-        $this->assertNull($movement->supplier_id, 'Outbound tidak boleh punya pemasok');
+        $this->assertNull($movement->transaction->supplier_id, 'Outbound tidak boleh punya pemasok');
         $this->assertDatabaseHas('audit_logs', ['action' => 'outbound.create']);
     }
 
@@ -189,7 +212,7 @@ class InventoryMovementServiceTest extends TestCase
         $movement = $this->service->recordStockOpname($product, physicalCount: 43);
 
         $this->assertSame(43, $product->fresh()->current_stock);
-        $this->assertSame(MovementType::Adjustment, $movement->movement_type);
+        $this->assertSame(MovementType::Adjustment, $movement->transaction->movement_type);
         $this->assertSame(-7, $movement->quantity, 'Delta harus -7, bukan 43');
         $this->assertDatabaseHas('audit_logs', ['action' => 'stock_opname.create']);
     }

@@ -6,6 +6,7 @@ use App\Enums\MovementType;
 use App\Jobs\AggregateDailyOutboundJob;
 use App\Models\DailyOutboundAggregation;
 use App\Models\InventoryMovement;
+use App\Models\InventoryTransaction;
 use App\Models\Product;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -49,7 +50,19 @@ class AggregateDailyOutboundJobTest extends TestCase
         string $movementType,
         string $at,
     ): InventoryMovement {
+        // Sejak tahap 3 jenis pergerakan dibaca dari DOKUMEN, bukan dari kolom
+        // di baris detail. Test yang membuat baris tanpa dokumen tidak akan
+        // pernah terlihat job — persis seperti di produksi.
+        $document = InventoryTransaction::create([
+            'system_code' => strtoupper(
+                MovementType::from($movementType)->value.'-'.substr(md5($at.$product->id.$quantity.mt_rand()), 0, 12),
+            ),
+            'movement_type' => $movementType,
+            'transaction_date' => $at,
+        ]);
+
         return InventoryMovement::create([
+            'transaction_id' => $document->id,
             'product_id' => $product->id,
             'movement_type' => $movementType,
             'quantity' => $quantity,

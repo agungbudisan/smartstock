@@ -8,6 +8,7 @@ use App\Models\AuditLog;
 use App\Models\Category;
 use App\Models\DailyOutboundAggregation;
 use App\Models\InventoryMovement;
+use App\Models\InventoryTransaction;
 use App\Models\MonthlyDemandPrediction;
 use App\Models\Product;
 use App\Models\Supplier;
@@ -15,6 +16,7 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -70,8 +72,10 @@ class ModelRelationshipTest extends TestCase
             'movement_date' => '2026-10-05 08:30:00',
         ]);
 
-        $this->assertInstanceOf(MovementType::class, $movement->movement_type);
-        $this->assertSame(MovementType::Inbound, $movement->movement_type);
+        // `movement_type` TIDAK lagi ada di baris detail (tahap 4), jadi yang di-cast
+        // ke enum dibaca dari dokumennya.
+        $this->assertInstanceOf(MovementType::class, $movement->transaction->movement_type);
+        $this->assertSame(MovementType::Inbound, $movement->transaction->movement_type);
         $this->assertIsInt($movement->quantity);
         $this->assertSame(120, $movement->quantity);
         $this->assertInstanceOf(Carbon::class, $movement->movement_date);
@@ -164,49 +168,61 @@ class ModelRelationshipTest extends TestCase
         $this->assertNull($product->category_id);
     }
 
-    public function test_supplier_has_many_inventory_movements(): void
+    public function test_supplier_reaches_movements_through_documents(): void
     {
         $supplier = Supplier::factory()->create();
+
+        // Dua baris inbound dari pemasok ini. Tiap panggilan factory membuat
+        // dokumen sendiri, jadi dua baris = dua dokumen.
         InventoryMovement::factory()->inbound(50, $supplier)->count(2)->create();
 
-        $this->assertInstanceOf(HasMany::class, $supplier->inventoryMovements());
+        // Relasi langsungnya ke dokumen.
+        $this->assertInstanceOf(HasMany::class, $supplier->inventoryTransactions());
+        $this->assertCount(2, $supplier->inventoryTransactions);
+
+        // Dan jalur dua hop ke baris detail, lewat dokumen.
+        $this->assertInstanceOf(HasManyThrough::class, $supplier->inventoryMovements());
         $this->assertCount(2, $supplier->inventoryMovements);
     }
 
     public function test_user_has_many_movements_and_audit_logs(): void
     {
         $user = User::factory()->adminGudang()->create();
-        InventoryMovement::factory()->count(2)->create(['user_id' => $user->id]);
+        InventoryTransaction::factory()->count(2)->create(['user_id' => $user->id]);
         AuditLog::factory()->count(3)->create(['user_id' => $user->id]);
 
-        $this->assertInstanceOf(HasMany::class, $user->inventoryMovements());
+        $this->assertInstanceOf(HasMany::class, $user->inventoryTransactions());
         $this->assertInstanceOf(HasMany::class, $user->auditLogs());
-        $this->assertCount(2, $user->inventoryMovements);
+        $this->assertCount(2, $user->inventoryTransactions);
         $this->assertCount(3, $user->auditLogs);
     }
 
-    public function test_movement_resolves_product_user_and_supplier(): void
+    public function test_movement_resolves_product_and_its_document(): void
     {
         $supplier = Supplier::factory()->create();
         $movement = InventoryMovement::factory()->inbound(40, $supplier)->create();
 
         $this->assertInstanceOf(BelongsTo::class, $movement->product());
-        $this->assertInstanceOf(BelongsTo::class, $movement->user());
-        $this->assertInstanceOf(BelongsTo::class, $movement->supplier());
         $this->assertInstanceOf(Product::class, $movement->product);
-        $this->assertInstanceOf(User::class, $movement->user);
-        $this->assertInstanceOf(Supplier::class, $movement->supplier);
+        $this->assertInstanceOf(InventoryTransaction::class, $movement->transaction);
+
+        // Pencatat dan pemasok milik DOKUMEN, bukan baris detail — relasi
+        // `user()` / `supplier()` di baris detail dihapus di tahap 4. Relasi
+        // yang dibiarkan hidup sementara kolomnya hilang akan mengembalikan
+        // null ke setiap pemanggil tanpa error, jadi halaman bisa tampil "benar"
+        // sambil menampilkan kolom kosong di mana-mana.
+        $this->assertInstanceOf(User::class, $movement->transaction->user);
+        $this->assertInstanceOf(Supplier::class, $movement->transaction->supplier);
     }
 
-    public function test_movement_supplier_and_user_may_be_null(): void
+    public function test_relasi_yang_telah_dihapus_tidak_lagi_ada_di_baris_detail(): void
     {
-        $movement = InventoryMovement::factory()->outbound(5)->create([
-            'user_id' => null,
-            'supplier_id' => null,
-        ]);
+        // Dikunci secara eksplisit: methods yang dihapus tidak boleh "dikembalikan
+        // diam-diam" oleh eager-load yang salah atau proxy Eloquent.
+        $movement = InventoryMovement::factory()->outbound(5)->create();
 
-        $this->assertNull($movement->supplier);
-        $this->assertNull($movement->user);
+        $this->assertFalse(method_exists($movement, 'user'), 'Relasi user() sudah dihapus di tahap 4');
+        $this->assertFalse(method_exists($movement, 'supplier'), 'Relasi supplier() sudah dihapus di tahap 4');
         $this->assertInstanceOf(Product::class, $movement->product);
     }
 
@@ -455,7 +471,7 @@ class ModelRelationshipTest extends TestCase
 
         $movement = InventoryMovement::factory()->inbound(75, $supplier)->create();
         $this->assertSame(75, $movement->quantity);
-        $this->assertSame($supplier->id, $movement->supplier_id);
+        $this->assertSame($supplier->id, $movement->transaction->supplier_id);
 
         $this->assertSame(-12, InventoryMovement::factory()->outbound(12)->create()->quantity);
         $this->assertSame(-5, InventoryMovement::factory()->adjustment(-5)->create()->quantity);
