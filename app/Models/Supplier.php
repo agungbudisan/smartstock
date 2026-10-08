@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 class Supplier extends Model
 {
@@ -41,13 +42,38 @@ class Supplier extends Model
     }
 
     /**
-     * Pergerakan stok yang merujuk pemasok ini (hanya inbound yang biasanya
-     * punya supplier_id; kolomnya nullable karena itu).
+     * Dokumen pergerakan yang menyebut pemasok ini.
      *
-     * @return HasMany<InventoryMovement, $this>
+     * Sejak tahap 4 `supplier_id` tidak lagi ada di baris detail, jadi relasi
+     * yang benar adalah ke dokumen. Relasi lama (`hasMany` ke kolom
+     * `supplier_id`) tidak bisa dipertahankan dan tidak dibiarkan menggantung:
+     * dipanggil, ia melempar "no such column" saat query.
+     *
+     * @return HasMany<InventoryTransaction, $this>
      */
-    public function inventoryMovements(): HasMany
+    public function inventoryTransactions(): HasMany
     {
-        return $this->hasMany(InventoryMovement::class);
+        return $this->hasMany(InventoryTransaction::class);
+    }
+
+    /**
+     * Semua baris detail dari dokumen-dokumen di atas.
+     *
+     * `hasManyThrough` dua hop, jadi jangan dipakai di halaman yang hanya
+     * butuh dokumen. Ada supaya pertanyaan "barang dari pemasok mana" tetap
+     * bisa dijawab tanpa menulis ulang kuerinya.
+     *
+     * @return HasManyThrough<InventoryMovement, InventoryTransaction, $this>
+     */
+    public function inventoryMovements(): HasManyThrough
+    {
+        return $this->hasManyThrough(
+            InventoryMovement::class,
+            InventoryTransaction::class,
+            'supplier_id',
+            'transaction_id',
+            'id',
+            'id',
+        );
     }
 }

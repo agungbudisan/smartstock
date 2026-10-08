@@ -25,6 +25,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * database (FK cascade tidak pernah menyala). Relasi `product()` karena itu
  * mengembalikan null. Untuk tetap membaca histori produk yang di-soft-delete,
  * pakai `$movement->product()->withTrashed()`.
+ *
+ * TAHAP 4: tabel ini tidak lagi punya `movement_type`, `user_id`, maupun
+ * `supplier_id`. Ketiganya milik dokumen — baca lewat
+ * `$movement->transaction->movement_type`, `->user`, `->supplier`. Baris
+ * detail sekarang hanya menjawab "produk mana, berapa, harga berapa, dan
+ * masuk ke faktur yang mana".
  */
 class InventoryMovement extends Model
 {
@@ -37,11 +43,10 @@ class InventoryMovement extends Model
      * @var list<string>
      */
     protected $fillable = [
+        'transaction_id',
         'product_id',
-        'user_id',
-        'supplier_id',
-        'movement_type',
         'quantity',
+        'unit_price',
         'reference_code',
         'movement_date',
     ];
@@ -49,13 +54,20 @@ class InventoryMovement extends Model
     /**
      * Get the attributes that should be cast.
      *
+     * Tidak ada `movement_type` di sini sejak tahap 4: kolomnya dihapus dari
+     * tabel. Kalau cast-nya dibiarkan, `$movement->movement_type` tidak akan
+     * melempar error — ia hanya mengembalikan null untuk atribut yang tidak ada,
+     * dan null itu lalu ikut ke seluruh halaman dan laporan sebagai "jenis
+     * pergerakan tidak diketahui". Pelanggaran skema yang diam-diam jauh lebih
+     * buruk daripada error yang langsung.
+     *
      * @return array<string, string>
      */
     protected function casts(): array
     {
         return [
-            'movement_type' => MovementType::class,
             'quantity' => 'integer',
+            'unit_price' => 'decimal:2',
             'movement_date' => 'datetime',
         ];
     }
@@ -63,6 +75,20 @@ class InventoryMovement extends Model
     // -----------------------------------------------------------------
     // Relations
     // -----------------------------------------------------------------
+
+    /**
+     * Dokumen pemilik baris ini (tahap 1 pemecahan header-detail).
+     *
+     * Relasi ini sumber kebenaran identitas pergerakan sejak tahap 3, dan
+     * satu-satunya sejak tahap 4 saat kolom `movement_type` / `user_id` /
+     * `supplier_id` dihapus dari baris detail.
+     *
+     * @return BelongsTo<InventoryTransaction, $this>
+     */
+    public function transaction(): BelongsTo
+    {
+        return $this->belongsTo(InventoryTransaction::class, 'transaction_id');
+    }
 
     /**
      * @return BelongsTo<Product, $this>
@@ -73,25 +99,17 @@ class InventoryMovement extends Model
     }
 
     /**
-     * Admin Gudang yang mencatat pergerakan ini. Nullabel bila akunnya sudah
-     * dihapus permanen.
+     * Relasi `user()` dan `supplier()` DIHAPUS di tahap 4.
      *
-     * @return BelongsTo<User, $this>
-     */
-    public function user(): BelongsTo
-    {
-        return $this->belongsTo(User::class);
-    }
-
-    /**
-     * Pemasok terkait (umumnya pada inbound). Nullable.
+     * Keduanya dulu menunjuk ke kolom di baris ini. Sekarang kolomnya tidak
+     * ada, dan pencatat serta pemasok milik dokumen — accessed lewat
+     * `$movement->transaction->user` / `->supplier`.
      *
-     * @return BelongsTo<Supplier, $this>
+     * Menyingkirkan relasi sepenuhnya, bukan cuma kolomnya, penting: relasi
+     * yang masih ada tapi kolomnya hilang akan mengembalikan null untuk setiap
+     * pemanggil, dan null itu bukan error — halaman akan terlihat benar sambil
+     * menampilkan kolom kosong di mana-mana.
      */
-    public function supplier(): BelongsTo
-    {
-        return $this->belongsTo(Supplier::class);
-    }
 
     // -----------------------------------------------------------------
     // Scope
@@ -100,11 +118,32 @@ class InventoryMovement extends Model
     /**
      * Hanya pergerakan keluar.
      *
+     * Seit tahap 3 filter ini membaca DOKUMEN, bukan kolom `movement_type` di
+     * baris ini — kolom itu akan dibuang di tahap 4. `whereHas` dipakai, bukan
+     * JOIN, supaya pemanggil tetap bisa melakukan `with('transaction')`
+     * terpisah dan tidak_query-nya tetap satu tabel.
+     *
      * @param  Builder<InventoryMovement>  $query
      */
     public function scopeOutboundOnly(Builder $query): void
     {
-        $query->where('movement_type', MovementType::Outbound);
+        $query->whereHas(
+            'transaction',
+            fn (Builder $trx) => $trx->where('movement_type', MovementType::Outbound),
+        );
+    }
+
+    /**
+     * Scope yang sama untuk pergerakan masuk dan stock opname.
+     *
+     * Satu scope generik lebih baik daripada dua scope terpisah yang isinya
+     * sama — pemanggil cukup `whereMovementType($type)`.
+     *
+     * @param  Builder<InventoryMovement>  $query
+     */
+    public function scopeOfMovementType(Builder $query, MovementType $type): void
+    {
+        $query->whereHas('transaction', fn (Builder $trx) => $trx->where('movement_type', $type));
     }
 
     /**
