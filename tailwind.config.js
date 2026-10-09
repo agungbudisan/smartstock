@@ -42,15 +42,35 @@ export default {
                 mono: ['JetBrains Mono', ...defaultTheme.fontFamily.mono],
             },
 
+            // Semua ukuran dalam `rem`, BUKAN `px`.
+            //
+            // Alasannya aksesibilitas, bukan selera. Dengan `px`, mengatur "Font size"
+            // di pengaturan tampilan browser -- langkah yang paling sering dilakukan
+            // pengguna yang matanya bermasalah -- tidak mengubah apa pun di aplikasi
+            // ini. Dengan `rem`, seluruh skala ikut mengikuti, termasuk pengatur ukuran
+            // teks yang ada di menu user.
+            //
+            // Skala juga naik satu langkah dari sebelumnya: body 15 ke 16, small 13 ke
+            // 14, caption 12 ke 13, overline 11 ke 12. Bagian atas justru dipangkas,
+            // karena 72px adalah skala halamanç¬¬å››æ¬¡ dan `display` sendiri tidak
+            // terpakai di mana pun.
+            //
+            // Catatan: `maxWidth.container` SENGAJA tetap `px`. Itu batas tata letak,
+            // bukan teks. Kalau ikut skala, memperbesar teks akan ikut melebarkan
+            // wadah dan mendorong konten keluar dari layar.
             fontSize: {
-                display: ['72px', { lineHeight: '1.05', letterSpacing: '-0.04em' }],
-                headline: ['60px', { lineHeight: '1.08', letterSpacing: '-0.035em' }],
-                section: ['32px', { lineHeight: '1.2', letterSpacing: '-0.03em' }],
-                subhead: ['24px', { lineHeight: '1.3', letterSpacing: '-0.02em' }],
-                body: ['15px', { lineHeight: '1.6' }],
-                small: ['13px', { lineHeight: '1.5' }],
-                caption: ['12px', { lineHeight: '1.45' }],
-                overline: ['11px', { lineHeight: '1.4', letterSpacing: '0.08em' }],
+                display: ['3.5rem', { lineHeight: '1.05', letterSpacing: '-0.03em' }],
+                headline: ['3rem', { lineHeight: '1.1', letterSpacing: '-0.025em' }],
+                section: ['1.75rem', { lineHeight: '1.25', letterSpacing: '-0.02em' }],
+                subhead: ['1.375rem', { lineHeight: '1.35', letterSpacing: '-0.015em' }],
+                body: ['1rem', { lineHeight: '1.6' }],
+                small: ['0.875rem', { lineHeight: '1.5' }],
+                caption: ['0.8125rem', { lineHeight: '1.45' }],
+                // `overline` dipakai untuk 44 header tabel, jadi ini bukan teks
+                // hiasan. 12px sudah cukup kecil; huruf besar dengan spasi 0.08em
+                // di bawah itu membuat kata terfragmentasi karena huruf kehilangan
+                // ascender dan descender.
+                overline: ['0.75rem', { lineHeight: '1.45', letterSpacing: '0.06em' }],
             },
 
             borderRadius: {

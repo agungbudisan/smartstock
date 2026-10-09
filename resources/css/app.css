@@ -10,6 +10,30 @@
         -webkit-text-size-adjust: 100%;
     }
 
+    /*
+     * Pengatur ukuran teks.
+     *
+     * Seluruh skala tipografi memakai `rem`, jadi mengubah satu angka di sini
+     * membesar seluruh aplikasi sekaligus: teks, jarak, tinggi baris tabel, dan
+     * lebar sidebar. Tidak ada komponen yang perlu tahu hal ini.
+     *
+     * Nilainya persentase dari ukuran font bawaan browser, bukan piksel absolut,
+     * supaya tetap menumpang di atas pengaturan ukuran font yang sudah-setting
+     * pengguna sendiri. Kalau memakai `px`, satu opsi di sini akan menimpa
+     * preferensi yang sudah dikumpulkan.
+     *
+     * Nilai "normal" sengaja TIDAK ditulis sebagai aturan apa pun. Tanpa
+     * atribut, `html` mengikuti ukuran bawaan browser apa adanya -- termasuk
+     * kalau pengguna sudah mengaturnya sendiri.
+     */
+    html[data-ukuran-teks='besar'] {
+        font-size: 112.5%;
+    }
+
+    html[data-ukuran-teks='sangat-besar'] {
+        font-size: 125%;
+    }
+
     body {
         @apply bg-surface-muted font-sans text-body text-content antialiased;
     }
@@ -65,6 +89,58 @@
 
     .input {
         @apply w-full rounded-input border border-hairline bg-surface px-3.5 py-2.5 text-body text-content placeholder:text-content-muted focus:border-primary focus:shadow-focus-ring focus:outline-none;
+    }
+
+    .input-error {
+        @apply border-danger focus:border-danger focus:ring-1 focus:ring-danger/30;
+    }
+
+    /*
+     * Dropdown.
+     *
+     * Ditulis sebagai `select.input`, bukan `.select` yang ditambahkan manual
+     * di tiap file. Alasannya dua:
+     *
+     *  1. Tidak bisa lupa. Setiap `<select class="input">` yang ditulis
+     *     sekarang maupun nanti ikut diperbaiki, tanpa satu file pun yang
+     *     harus disentuh.
+     *  2. Urutan CSS tidak jadi masalah. `select.input` specificity-nya
+     *     (0,1,1), di atas `.input` (0,1,0) -- jadi tidak bergantung urutan.
+     *
+     * Kenapa perlu ada sama sekali: `.input` memberi `padding-right` 14px,
+     * sedangkan chevron bawaan browser memakan sekitar 20-28px. Teks panjang
+     * seperti "-- tanpa pemasok (stok hasil hitung) --" masuk ke bawah chevron
+     * dan terpotong, sementara teks pendek kebetulan tidak -- sehingga kelihatan
+     * acak dari satu dropdown ke dropdown lain. Ini yang dikeluhkan.
+     *
+     * Warna chevron memakai `colors.content.secondary`, primary saat fokus, dan
+     * `colors.content.muted` saat nonaktif. Nilainya literal karena `currentColor`
+     * tidak berlaku di dalam data URI SVG (dokumen terpisah). Dark mode belum
+     * benar-benar ada -- `darkMode: class` sudah dikonfigurasi tapi tidak ada
+     * aturan `.dark` dan tidak ada yang menambah class itu ke `<html>` -- jadi
+     * warna statis di sini belum menyimpang dari token.
+     */
+    select.input {
+        @apply appearance-none pr-10;
+
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B6B6B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 0.875rem center;
+        background-size: 1rem 1rem;
+    }
+
+    select.input:hover:not(:disabled) {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%230A0A0A' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    }
+
+    select.input:focus {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236366F1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    }
+
+    select.input:disabled {
+        @apply cursor-not-allowed bg-surface-muted text-content-muted;
+
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239C9C9C' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     }
 
     .label {
