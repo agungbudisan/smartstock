@@ -58,7 +58,7 @@ class DatabaseSchemaTest extends TestCase
 
         $this->assertEmpty(
             array_diff($expected, $this->tableNames()),
-            'Tabel proyek Smart-Stock belum lengkap dibuat.'
+            'Tabel proyek SmartStock belum lengkap dibuat.'
         );
     }
 
@@ -114,43 +114,43 @@ class DatabaseSchemaTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // inventory_movements.movement_type (enum) & quantity (delta bertanda)
+    // inventory_movements: baris detail (tanpa kolom identitas)
     // ------------------------------------------------------------------
 
-    public function test_inventory_movements_accepts_every_movement_type(): void
+    public function test_inventory_transactions_accepts_every_movement_type(): void
     {
-        $productId = $this->makeProduct();
-
-        foreach (MovementType::cases() as $case) {
-            DB::table('inventory_movements')->insert([
-                'product_id' => $productId,
-                'movement_type' => $case->value,
-                'quantity' => 1,
-            ]);
-        }
-
         $this->assertSame(
             count(MovementType::cases()),
-            DB::table('inventory_movements')->where('product_id', $productId)->count()
+            $this->jumlahKolomYangDiterima('inventory_transactions', 'movement_type', MovementType::values()),
         );
     }
 
-    public function test_inventory_movements_rejects_unknown_movement_type(): void
+    public function test_inventory_transactions_rejects_unknown_movement_type(): void
     {
         $this->expectException(QueryException::class);
 
-        DB::table('inventory_movements')->insert([
-            'product_id' => $this->makeProduct(),
-            'movement_type' => 'transfer',
-            'quantity' => 1,
-        ]);
+        DB::table('inventory_transactions')->insert($this->dokumen(['movement_type' => 'transfer']));
+    }
+
+    public function test_baris_detail_tidak_lagi_punya_kolom_identitas(): void
+    {
+        // Tahap 4. Jenis, pemasok, dan pencatat milik dokumen; menyalinnya ke
+        // baris detail berarti ada dua sumber kebenaran yang bisa berbeda.
+        foreach (['movement_type', 'user_id', 'supplier_id'] as $kolom) {
+            $this->assertFalse(
+                Schema::hasColumn('inventory_movements', $kolom),
+                "Kolom {$kolom} seharusnya sudah dihapus dari inventory_movements",
+            );
+        }
     }
 
     public function test_quantity_accepts_negative_values_for_the_ledger_delta(): void
     {
+        $documentId = $this->makeDocument(['movement_type' => MovementType::Outbound->value]);
+
         $id = DB::table('inventory_movements')->insertGetId([
+            'transaction_id' => $documentId,
             'product_id' => $this->makeProduct(),
-            'movement_type' => MovementType::Outbound->value,
             'quantity' => -25,
         ]);
 
@@ -160,26 +160,22 @@ class DatabaseSchemaTest extends TestCase
     public function test_movement_date_falls_back_to_now_when_omitted(): void
     {
         $id = DB::table('inventory_movements')->insertGetId([
+            'transaction_id' => $this->makeDocument(),
             'product_id' => $this->makeProduct(),
-            'movement_type' => MovementType::Inbound->value,
             'quantity' => 5,
         ]);
 
         $this->assertNotNull(DB::table('inventory_movements')->where('id', $id)->value('movement_date'));
     }
 
-    public function test_supplier_id_and_user_id_are_optional_on_movements(): void
+    public function test_supplier_and_user_are_optional_on_the_document(): void
     {
-        $id = DB::table('inventory_movements')->insertGetId([
-            'product_id' => $this->makeProduct(),
-            'movement_type' => MovementType::Outbound->value,
-            'quantity' => -1,
-        ]);
+        // Stok pembuka tanpa dokumen pembelian adalah kondisi nyata, jadi kolom
+        // di header harus nullable. Di baris detail kolomnya sudah tidak ada.
+        $row = DB::table('inventory_transactions')->where('id', $this->makeDocument())->first();
 
-        $row = DB::table('inventory_movements')->where('id', $id)->first();
-
-        $this->assertNull($row->user_id);
         $this->assertNull($row->supplier_id);
+        $this->assertNull($row->user_id);
     }
 
     // ------------------------------------------------------------------
@@ -268,11 +264,13 @@ class DatabaseSchemaTest extends TestCase
         $productId = $this->makeProduct();
         $supplierId = $this->makeSupplier();
         $userId = $this->makeUser();
+        $documentId = $this->makeDocument();
 
         $invalid = [
-            ['inventory_movements', ['product_id' => 999999, 'movement_type' => 'inbound', 'quantity' => 1]],
-            ['inventory_movements', ['product_id' => $productId, 'user_id' => 999999, 'movement_type' => 'inbound', 'quantity' => 1]],
-            ['inventory_movements', ['product_id' => $productId, 'supplier_id' => 999999, 'movement_type' => 'inbound', 'quantity' => 1]],
+            ['inventory_movements', ['transaction_id' => 999999, 'product_id' => $productId, 'quantity' => 1]],
+            ['inventory_movements', ['transaction_id' => $documentId, 'product_id' => 999999, 'quantity' => 1]],
+            ['inventory_transactions', ['movement_type' => 'inbound', 'user_id' => 999999]],
+            ['inventory_transactions', ['movement_type' => 'inbound', 'supplier_id' => 999999]],
             ['products', ['category_id' => 999999, 'name' => 'x', 'sku' => 'SKU-FK']],
             ['audit_logs', ['user_id' => 999999, 'action' => 'test', 'description' => 'test']],
             ['product_supplier', ['product_id' => 999999, 'supplier_id' => $supplierId]],
@@ -302,15 +300,17 @@ class DatabaseSchemaTest extends TestCase
         $this->assertTrue(DB::table('products')->where('id', $productId)->exists());
     }
 
-    public function test_deleting_a_user_keeps_movements_and_audit_logs(): void
+    public function test_deleting_a_user_keeps_documents_and_audit_logs(): void
     {
         $userId = $this->makeUser();
+
+        $documentId = $this->makeDocument(['user_id' => $userId]);
         $movementId = DB::table('inventory_movements')->insertGetId([
+            'transaction_id' => $documentId,
             'product_id' => $this->makeProduct(),
-            'user_id' => $userId,
-            'movement_type' => MovementType::Inbound->value,
             'quantity' => 10,
         ]);
+
         $logId = DB::table('audit_logs')->insertGetId([
             'user_id' => $userId,
             'action' => 'inbound.create',
@@ -319,7 +319,12 @@ class DatabaseSchemaTest extends TestCase
 
         DB::table('users')->where('id', $userId)->delete();
 
-        $this->assertNull(DB::table('inventory_movements')->where('id', $movementId)->value('user_id'));
+        // Penatatc jadi NULL, tapi dokumen DAN baris detailnya tetap ada — riwayat
+        // barang tidak boleh ikut hilang hanya karena akunnya dihapus.
+        $document = DB::table('inventory_transactions')->where('id', $documentId)->first();
+
+        $this->assertNotNull($document);
+        $this->assertNull($document->user_id);
         $this->assertNotNull(DB::table('inventory_movements')->where('id', $movementId)->value('movement_date'));
 
         $auditLog = DB::table('audit_logs')->where('id', $logId)->first();
@@ -327,23 +332,30 @@ class DatabaseSchemaTest extends TestCase
         $this->assertNull($auditLog->user_id);
     }
 
-    public function test_deleting_a_supplier_cascades_pivot_but_keeps_movements(): void
+    public function test_deleting_a_supplier_cascades_pivot_but_keeps_documents(): void
     {
         $supplierId = $this->makeSupplier();
         $productId = $this->makeProduct();
         $this->makePivot($productId, $supplierId);
 
-        $movementId = DB::table('inventory_movements')->insertGetId([
+        $documentId = $this->makeDocument(['supplier_id' => $supplierId]);
+
+        DB::table('inventory_movements')->insert([
+            'transaction_id' => $documentId,
             'product_id' => $productId,
-            'supplier_id' => $supplierId,
-            'movement_type' => MovementType::Inbound->value,
             'quantity' => 10,
         ]);
 
         DB::table('suppliers')->where('id', $supplierId)->delete();
 
         $this->assertSame(0, DB::table('product_supplier')->where('supplier_id', $supplierId)->count());
-        $this->assertNull(DB::table('inventory_movements')->where('id', $movementId)->value('supplier_id'));
+
+        // Baris detail TIDAK ikut terhapus meski pemasoknya hilang — asal-usul
+        // barang masuk hanya jadi tidak bernama, bukan hilang.
+        $this->assertSame(1, DB::table('inventory_movements')->where('transaction_id', $documentId)->count());
+        $this->assertNull(
+            DB::table('inventory_transactions')->where('id', $documentId)->value('supplier_id'),
+        );
     }
 
     public function test_deleting_a_product_cascades_to_all_child_tables(): void
@@ -353,7 +365,9 @@ class DatabaseSchemaTest extends TestCase
         $this->makePivot($productId, $supplierId);
 
         DB::table('inventory_movements')->insert([
-            'product_id' => $productId, 'movement_type' => 'inbound', 'quantity' => 1,
+            'transaction_id' => $this->makeDocument(),
+            'product_id' => $productId,
+            'quantity' => 1,
         ]);
         DB::table('daily_outbound_aggregations')->insert([
             'product_id' => $productId, 'date' => '2026-10-06', 'total_qty_out' => 1,
@@ -370,6 +384,24 @@ class DatabaseSchemaTest extends TestCase
         $this->assertSame(0, DB::table('product_supplier')->where('product_id', $productId)->count());
     }
 
+    /*
+     * Test "dokumen ikut terhapus saat produk dihapus" pernah ditulis di sini
+     * lalu DIHAPUS, karena mengarang perilaku yang tidak ada.
+     *
+     * Arah cascade-nya hanya satu: `inventory_transactions` ->
+     * `inventory_movements`. Menghapus PRODUK membuat baris detailnya ikut
+     * hilang, tapi tidak ada yang menarik dokumennya. Dokumen yatim itu nyata.
+     *
+     * Kenapa tidak ditutup dengan cascade dari baris ke dokumen: catatan
+     * faktur tidak seharusnya hilang hanya karena salah satu SKU-nya
+     * di-forceDelete. Bukti yang tersisa lebih berharga daripada kerapian.
+     *
+     * Yang dijaga sebagai gantinya adalah pemangkasan di
+     * `DatabaseSeeder::kosongkan()`. Bukan filter di sini, karena dokumen
+     * yatim tidak muncul di Buku Besar sehingga tidak akan ketahuan tanpa
+     * sengaja.
+     */
+
     // ------------------------------------------------------------------
     // PHP enum <-> migration tetap sinkron
     // ------------------------------------------------------------------
@@ -382,24 +414,29 @@ class DatabaseSchemaTest extends TestCase
             'Nilai UserRole tidak sinkron dengan kolom users.role di migration.'
         );
 
+        // Since tahap 4 enum `movement_type` hanya ada di dokumen. Menunjuk
+        // migration baris detail akan selalu gagal -- bukan karena enum-nya
+        // salah, tapi karena kolomnya memang sudah tidak ada di sana.
         $this->assertSame(
-            $this->enumValuesIn('2026_10_07_090500_create_inventory_movements_table.php'),
+            $this->enumValuesIn('2026_10_07_090450_create_inventory_transactions_table.php'),
             MovementType::values(),
             'Nilai MovementType tidak sinkron dengan kolom movement_type di migration.'
+        );
+
+        $this->assertFalse(
+            $this->migrationDefinesEnum('2026_10_07_090500_create_inventory_movements_table.php'),
+            'Kolom movement_type harus sudah dihapus dari baris detail di tahap 4',
         );
     }
 
     /**
-     * Membaca daftar nilai enum yang tertulis di migration.
-     *
      * @return array<int, string>
      */
     private function enumValuesIn(string $migrationFile): array
     {
-        $path = database_path('migrations/'.$migrationFile);
-        $this->assertFileExists($path);
+        $this->assertFileExists(database_path('migrations/'.$migrationFile));
 
-        $contents = (string) file_get_contents($path);
+        $contents = (string) file_get_contents(database_path('migrations/'.$migrationFile));
 
         $this->assertSame(
             1,
@@ -412,9 +449,72 @@ class DatabaseSchemaTest extends TestCase
         return $values[1];
     }
 
+    private function migrationDefinesEnum(string $migrationFile): bool
+    {
+        $contents = (string) file_get_contents(database_path('migrations/'.$migrationFile));
+
+        return preg_match("/->enum\(\s*'movement_type'/", $contents) === 1;
+    }
+
     // ------------------------------------------------------------------
     // Helper
     // ------------------------------------------------------------------
+
+    /**
+     * Baris detail selalu butuh dokumen induknya; hampir semua test di sini
+     * menyisipkan langsung lewat `DB::table()`.
+     *
+     * @param  array<string, mixed>  $tambahan
+     */
+    private function makeDocument(array $tambahan = []): int
+    {
+        return DB::table('inventory_transactions')->insertGetId(array_merge([
+            'system_code' => 'TX-'.fake()->unique()->numerify('########'),
+            'movement_type' => MovementType::Inbound->value,
+            'transaction_date' => '2026-10-06 09:00:00',
+        ], $tambahan));
+    }
+
+    /**
+     * Berapa banyak nilai enum yang diterima kolom, dihitung dengan
+     * mencoba satu per satu.
+     *
+     * Menghitung dengan cara ini, bukan dengan membaca definisi enum: yang
+     * sedang diuji adalah apa yang DATABASE terima, bukan apa yang tertulis di
+     * migration. Kalau keduanya berbeda, itu justru bug yang paling perlu
+     * Tertangkap.
+     *
+     * @param  array<int, string>  $nilai
+     */
+    private function jumlahKolomYangDiterima(string $tabel, string $kolom, array $nilai): int
+    {
+        $diterima = 0;
+
+        foreach ($nilai as $satu) {
+            try {
+                DB::table($tabel)->insert($this->dokumen([$kolom => $satu]));
+                $diterima++;
+            } catch (QueryException) {
+                // Ditolak: nilai enum ini tidak berlaku. Itu jawaban yang
+                // benar, bukan kegagalan.
+            }
+        }
+
+        return $diterima;
+    }
+
+    /**
+     * @param  array<string, mixed>  $kolom
+     * @return array<string, mixed>
+     */
+    private function dokumen(array $kolom): array
+    {
+        return array_merge([
+            'system_code' => 'TX-'.fake()->unique()->numerify('########'),
+            'movement_type' => MovementType::Inbound->value,
+            'transaction_date' => '2026-10-06 09:00:00',
+        ], $kolom);
+    }
 
     private function makeUser(): int
     {

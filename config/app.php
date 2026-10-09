@@ -59,13 +59,20 @@ return [
     | Application Timezone
     |--------------------------------------------------------------------------
     |
-    | Here you may specify the default timezone for your application, which
-    | will be used by the PHP date and date-time functions. The timezone
-    | is set to "UTC" by default as it is suitable for most use cases.
+    | SmartStock operates in WIB, so this is what Carbon uses everywhere:
+    | `now()`, `startOfDay()`, `endOfDay()`, and every timestamp written to
+    | the database. That last part matters more than it looks -- the daily
+    | aggregation buckets movements between `startOfDay()` and `endOfDay()`,
+    | so leaving this at UTC shifts every business day by seven hours against
+    | the shift the warehouse actually works. CSV exports and their filenames
+    | carry UTC dates for the same reason.
+    |
+    | Keep this in sync with `phpunit.xml` (APP_TIMEZONE) so tests assert
+    | against the same calendar the application runs on.
     |
     */
 
-    'timezone' => 'UTC',
+    'timezone' => env('APP_TIMEZONE', 'UTC'),
 
     /*
     |--------------------------------------------------------------------------

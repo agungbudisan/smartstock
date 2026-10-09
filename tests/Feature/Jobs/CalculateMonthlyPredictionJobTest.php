@@ -82,15 +82,72 @@ class CalculateMonthlyPredictionJobTest extends TestCase
         $this->assertNotNull($prediction->calculated_at);
     }
 
-    public function test_it_defaults_to_next_month(): void
+    public function test_it_defaults_to_current_and_next_month(): void
     {
         $product = Product::factory()->create();
         $this->seedHistory($product, 30);
 
-        // "now" = 2026-11-01, jadi bulan target default = 2026-12-01.
+        // "now" = 2026-11-01, jadi default-nya bulan BERJALAN (2026-11-01)
+        // plus bulan depan (2026-12-01).
+        //
+        // Bulan berjalan wajib ikut: begitu bulan itu berganti, ia langsung
+        // berpindah dari "bulan depan" ke "bulan lampau" dan tidak ada yang
+        // menghitungnya, sehingga Dasbor melompat satu bulan -- padahal bulan
+        // berjalan adalah yang menjawab "stok cukup untuk bulan ini?".
         $this->job()->handle(app(PredictionService::class));
 
-        $this->assertSame('2026-12-01', MonthlyDemandPrediction::first()->target_month->toDateString());
+        $this->assertEqualsCanonicalizing(
+            ['2026-11-01', '2026-12-01'],
+            MonthlyDemandPrediction::pluck('target_month')
+                ->map(fn ($row): string => $row->toDateString())
+                ->all(),
+        );
+    }
+
+    /**
+     * Prediksi bulan BERJALAN tidak boleh tercemar data bulan berjalan itu
+     * sendiri yang baru separuh.
+     *
+     * `predict()` mengambil histori sampai `$targetMonth->subDay()` -- akhir
+     * bulan sebelumnya. Kalau aturan itu berubah dan histori ikut merangkak ke
+     * hari ini, angka "berapa kebutuhan November" akan bergerak setiap malam,
+     * dan dua orang yang membuka Dasbor di hari berbeda akan melihat angka
+     * berbeda untuk pertanyaan yang sama.
+     *
+     * Diuji dengan cara yang jujur: tambah agregat Inside bulan target dengan
+     * nilai yang sangat besar, lalu pastikan prediksinya TIDAK bergerak. Kalau
+     * histori ikut merangkak, angka ini langsung melompat.
+     */
+    public function test_bulan_berjalan_dihitung_dari_histori_sebelum_bulan_itu_mulai(): void
+    {
+        $product = Product::factory()->create();
+        $this->seedHistory($product, 30);
+
+        $this->job('2026-11-01', 30)->handle(app(PredictionService::class));
+
+        $sebelum = (int) MonthlyDemandPrediction::where('product_id', $product->id)
+            ->value('predicted_qty');
+
+        $this->assertGreaterThan(0, $sebelum);
+
+        // Agregat besar di 1 November 2026, yaitu DI DALAM bulan target.
+        DailyOutboundAggregation::factory()->create([
+            'product_id' => $product->id,
+            'date' => '2026-11-01',
+            'total_qty_out' => 100_000,
+        ]);
+
+        $this->job('2026-11-01', 30)->handle(app(PredictionService::class));
+
+        $sesudah = (int) MonthlyDemandPrediction::where('product_id', $product->id)
+            ->value('predicted_qty');
+
+        $this->assertSame(
+            $sebelum,
+            $sesudah,
+            'Prediksi bulan berjalan ikut bergerak setelah ada agregat di dalam bulan '
+            .'target -- berarti histori bocor ke masa depan.',
+        );
     }
 
     public function test_it_skips_products_without_any_history(): void
@@ -152,10 +209,21 @@ class CalculateMonthlyPredictionJobTest extends TestCase
         $product = Product::factory()->create();
         $this->seedHistory($product, 60);
 
-        // dispatchSync() melewati handle() sehingga dependensi method di-inject.
-        $this->job('2026-11-01', 60)->dispatchSync();
+        // Sengaja pakai `app()->call()`, BUKAN `dispatchSync()`.
+        //
+        // `dispatchSync()` membangun ulang job dengan nilai default constructor,
+        // jadi `targetMonth = null` secara diam-diam: handle() dipanggil pada
+        // objek BARU, bukan objek yang di-`new`. Test lama tidak pernah
+        // merasakannya karena default-nya kebetulan menghasilkan satu bulan;
+        // begitu default jadi dua bulan, ketahuan bahwa assertion-nya hanya
+        // mengukur default, bukan `targetMonth` yang sengaja dikirim.
+        app()->call([$this->job('2026-11-01', 60), 'handle']);
 
         $this->assertSame(1, MonthlyDemandPrediction::count());
+        $this->assertSame(
+            '2026-11-01',
+            MonthlyDemandPrediction::first()->target_month->toDateString(),
+        );
     }
 
     // -----------------------------------------------------------------

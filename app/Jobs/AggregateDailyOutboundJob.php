@@ -63,7 +63,7 @@ class AggregateDailyOutboundJob implements ShouldQueue
         $written = $this->persist($rows);
         $removed = $this->pruneStaleRows($rows, $startDate, $endDate);
 
-        Log::info('Smart-Stock: agregasi harian selesai', [
+        Log::info('SmartStock: agregasi harian selesai', [
             'from' => $startDate->toDateString(),
             'to' => $endDate->toDateString(),
             'rows_upserted' => $written,
@@ -90,20 +90,28 @@ class AggregateDailyOutboundJob implements ShouldQueue
         $rows = InventoryMovement::query()
             // product_id harus disebut eksplisit: selectRaw() mengganti daftar
             // kolom, bukan menambahkannya.
-            ->select('product_id')
+            ->select('inventory_movements.product_id')
             ->selectRaw($dateExpression.' as agg_date, SUM(ABS(quantity)) as total_qty_out')
-            ->where('movement_type', MovementType::Outbound->value)
+            // Jenis pergerakan dibaca dari DOKUMEN. Kolom `movement_type` di
+            // baris detail dibuang di tahap 4, jadi filter ini tidak boleh
+            // bergantung padanya.
+            //
+            // JOIN, bukan `whereHas`: kueri ini sudah di-GROUP BY, dan
+            // `whereHas` di sini akan jadi subquery EXISTS per baris di dalam
+            // agregasi. JOIN sekali saja jauh lebih murah.
+            ->join('inventory_transactions', 'inventory_transactions.id', '=', 'inventory_movements.transaction_id')
+            ->where('inventory_transactions.movement_type', MovementType::Outbound->value)
             // Batas query harus 'Y-m-d H:i:s', karena kolom timestamp ditulis
             // Eloquent dengan format itu dan SQLite menyimpannya apa adanya
             // sebagai teks. String 'Y-m-d' akan membuat baris terakhir hari
             // tersebut terlewat.
-            ->whereBetween('movement_date', [
+            ->whereBetween('inventory_movements.movement_date', [
                 $startDate->startOfDay()->format('Y-m-d H:i:s'),
                 $endDate->endOfDay()->format('Y-m-d H:i:s'),
             ])
-            ->groupBy('product_id')
+            ->groupBy('inventory_movements.product_id')
             ->groupByRaw($dateExpression)
-            ->orderBy('product_id')
+            ->orderBy('inventory_movements.product_id')
             ->get();
 
         return $rows;

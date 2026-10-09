@@ -57,10 +57,52 @@ class CalculateMonthlyPredictionJob implements ShouldQueue
      */
     public function handle(PredictionService $predictionService): int
     {
-        $targetMonth = $this->targetMonth !== null
-            ? CarbonImmutable::parse($this->targetMonth)->startOfMonth()
-            : CarbonImmutable::now()->addMonthNoOverflow()->startOfMonth();
+        $bulan = $this->targetMonth !== null
+            ? [CarbonImmutable::parse($this->targetMonth)->startOfMonth()]
+            : $this->bulanDefault();
 
+        $total = 0;
+        foreach ($bulan as $satuBulan) {
+            $total += $this->hitung($predictionService, $satuBulan);
+        }
+
+        return $total;
+    }
+
+    /**
+     * Bulan yang harus ada setiap hari: bulan BERJALAN dan bulan depan.
+     *
+     * Bulan depan saja -- seperti sebelumnya -- berarti bulan berjalan tidak
+     * pernah punya prediksi sama sekali: begitu bulan itu berganti, ia
+     * langsung berpindah dari "bulan depan" ke "bulan lampau" dan tidak ada
+     * yang menghitungnya. Dasbor lalu melompati bulan itu, padahal bulan
+     * berjalan adalah yang paling operatif: itu yang menjawab "stok cukup untuk
+     * bulan ini?".
+     *
+     * Perhitungannya sendiri tetap sah untuk bulan berjalan: `predict()`
+     * mengambil histori sampai `$targetMonth->subDay()` -- akhir bulan
+     * sebelumnya -- lalu memroyeksikan seluruh bulan target. Tidak ada
+     * data masa depan yang bocor, dan tidak ada data bulan berjalan yang
+     * separuh. Karena batas historinya tidak bergerak selama sebulan, hasilnya
+     * juga stabil: dihitung ulang tiap malam, angkanya tidak berubah.
+     *
+     * @return array<int, CarbonImmutable>
+     */
+    private function bulanDefault(): array
+    {
+        $sekarang = CarbonImmutable::now();
+
+        return [
+            $sekarang->startOfMonth(),
+            $sekarang->addMonthNoOverflow()->startOfMonth(),
+        ];
+    }
+
+    /**
+     * @return int jumlah prediksi untuk satu bulan target
+     */
+    private function hitung(PredictionService $predictionService, CarbonImmutable $targetMonth): int
+    {
         /*
          * Sengaja memakai predictAll() + store() per hasil, bukan
          * calculateAndStore(): object PredictionResult asli menyimpan
@@ -80,7 +122,7 @@ class CalculateMonthlyPredictionJob implements ShouldQueue
 
         $alerts = $this->reportProjectedStockouts($predictionService, $results);
 
-        Log::info('Smart-Stock: kalkulasi prediksi bulanan selesai', [
+        Log::info('SmartStock: kalkulasi prediksi bulanan selesai', [
             'target_month' => $targetMonth->toDateString(),
             'predictions' => $results->count(),
             'stockout_alerts' => $alerts,
@@ -124,7 +166,7 @@ class CalculateMonthlyPredictionJob implements ShouldQueue
                 continue;
             }
 
-            Log::warning('Smart-Stock: stok diprediksi habis sebelum barang tiba', [
+            Log::warning('SmartStock: stok diprediksi habis sebelum barang tiba', [
                 'product_id' => $product->id,
                 'sku' => $product->sku,
                 'current_stock' => $product->current_stock,
