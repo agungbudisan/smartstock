@@ -11,6 +11,13 @@ The interface, validation messages, and domain terminology are in Indonesian
 
 <!-- Add screenshots here: dashboard, reorder list, accuracy report, stock entry form. -->
 
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6366F1" alt="MIT License"></a>
+  <img src="https://img.shields.io/badge/Laravel-12.69-FF2D20" alt="Laravel 12.69">
+  <img src="https://img.shields.io/badge/PHP-8.2-777BB4" alt="PHP 8.2">
+  <img src="https://img.shields.io/badge/Vue-3.4-42B883" alt="Vue 3">
+</p>
+
 ---
 
 ## Table of contents
@@ -119,8 +126,8 @@ cp .env.example .env
 php artisan key:generate
 ```
 
-**Configure the database.** `.env.example` ships `DB_CONNECTION=sqlite`, but this
-application targets MySQL. Set it explicitly:
+**Configure the database.** `.env.example` is already set to MySQL. Adjust the
+credentials if yours differ:
 
 ```dotenv
 DB_CONNECTION=mysql
@@ -289,5 +296,4 @@ tests/js/                source-level frontend guards
 
 ## License
 
-No license has been chosen yet. Add a `LICENSE` file before publishing — without one,
-the default copyright rules apply and nobody may legally reuse this.
+MIT — see [LICENSE](LICENSE).
