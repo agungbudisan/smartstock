@@ -14,8 +14,8 @@
             generik. Menambahkan tag tanpa memperbaiki berkasnya tidak akan
             mengubah apa pun.
         --}}
-        <link rel="icon" href="/favicon.ico" sizes="any">
-        <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+        <link rel="icon" href="/favicon.ico?v=20261009" sizes="any">
+        <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png?v=20261009">
 
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.bunny.net">

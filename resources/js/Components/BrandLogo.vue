@@ -21,5 +21,5 @@
 </script>
 
 <template>
-    <img src="/brand/logo-horizontal.png" alt="SmartStock" class="object-contain" />
+    <img src="/brand/logo-horizontal.png?v=20261009" alt="SmartStock" class="object-contain" />
 </template>
